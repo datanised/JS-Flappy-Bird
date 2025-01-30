@@ -243,7 +243,7 @@ const bird = {
         this.setRotation();
         this.speed += this.gravity;
         if (this.y + r >= gnd.y || this.collisioned()) {
-          state.curr = state.gameOver;
+          gameOver(); // Call gameOver function
         }
 
         break;
@@ -350,40 +350,16 @@ const UI = {
         sctx.strokeText(this.score.curr, scrn.width / 2 - 5, 50);
         break;
       case state.gameOver:
+        if (!gameOverTracked) {
+            gameOverTracked = true;
+            fetchLeaderboard(); // Refresh leaderboard when game ends
+        }
+        // Draw current score
         sctx.lineWidth = "2";
         sctx.font = "40px Squada One";
         let sc = `SCORE :     ${this.score.curr}`;
-        try {
-          this.score.best = Math.max(
-            this.score.curr,
-            localStorage.getItem("best")
-          );
-          localStorage.setItem("best", this.score.best);
-          let bs = `BEST  :     ${this.score.best}`;
-          sctx.fillText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
-          sctx.strokeText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
-          sctx.fillText(bs, scrn.width / 2 - 80, scrn.height / 2 + 30);
-          sctx.strokeText(bs, scrn.width / 2 - 80, scrn.height / 2 + 30);
-        } catch (e) {
-          sctx.fillText(sc, scrn.width / 2 - 85, scrn.height / 2 + 15);
-          sctx.strokeText(sc, scrn.width / 2 - 85, scrn.height / 2 + 15);
-        }
-
-        if (state.curr === state.gameOver && !SFX.played && !gameOverTracked) {
-          trackEvent('game_over', { score: this.score.curr });
-          fetch('/leaderboard')
-              .then(resp => resp.json())
-              .then(leaderboard => {
-                  let output = '<h3>Leaderboard</h3><ul>';
-                  leaderboard.forEach(entry => {
-                      output += `<li>${entry.player}: ${entry.score}</li>`;
-                  });
-                  output += '</ul>';
-                  document.getElementById('leaderboardContainer').innerHTML = output;
-                  gameOverTracked = true;
-              })
-              .catch(err => console.error('Leaderboard fetch error:', err));
-      }
+        sctx.fillText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
+        sctx.strokeText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
         break;
     }
   },
@@ -516,13 +492,26 @@ async function initializeSession(email) {
 // Modify bird.collisioned function to track collisions
 const originalCollisioned = bird.collisioned;
 bird.collisioned = function() {
-    const collision = originalCollisioned.call(this);
-    if (collision) {
-        trackEvent('collision', {
-            type: 'pipe'
-        });
-    }
-    return collision;
+  if (!pipe.pipes.length) return;
+  let bird = this.animations[0].sprite;
+  let x = pipe.pipes[0].x;
+  let y = pipe.pipes[0].y;
+  let r = bird.height / 4 + bird.width / 4;
+  let roof = y + parseFloat(pipe.top.sprite.height);
+  let floor = roof + pipe.gap;
+  let w = parseFloat(pipe.top.sprite.width);
+  if (this.x + r >= x) {
+      if (this.x + r < x + w) {
+          if (this.y - r <= roof || this.y + r >= floor) {
+              SFX.hit.play();
+              return true; // Collision detected
+          }
+      } else if (pipe.moved) {
+          UI.score.curr++;
+          SFX.score.play();
+          pipe.moved = false;
+      }
+  }
 };
 
 // Modify UI.drawScore to show leaderboard container when displaying it
@@ -580,24 +569,70 @@ const leaderboard = {
     }
 };
 
-// Update game over handling
 async function gameOver() {
+    console.log('Game over function called');
     state.curr = state.gameOver;
     SFX.die.play();
     
-    if (bird.score.curr > 0) {
-        await crateDB.saveScore('Player', bird.score.curr);
+    if (gameOverTracked) {
+        return;
+    }
+
+    const playerName = document.getElementById('email')?.value || 'Anonymous';
+    const score = UI.score.curr;
+    
+    try {
+        console.log('Saving score:', { playerName, score });
+        const saveResult = await crateDB.saveScore(playerName, score);
+        
+        if (!saveResult.success) {
+            throw new Error(saveResult.error || 'Failed to save score');
+        }
+
+
+        await trackEvent('game_over', {
+            playerName,
+            score,
+            timestamp: new Date().toISOString()
+        });
+
+        // Refresh leaderboard
+        await fetchLeaderboard();
+        gameOverTracked = true;
+    } catch (error) {
+        console.error('Game over error:', error);
+        document.getElementById('leaderboardContainer').innerHTML = 
+            `<p>Error saving score: ${error.message}</p>`;
     }
 }
 
 let leaderboardData = null;
 
-// Single fetch function
+// Update leaderboard fetching
 async function fetchLeaderboard() {
-    if (leaderboardData) return leaderboardData;
     try {
+        console.log('Fetching leaderboard...');
         const scores = await crateDB.getLeaderboard(5);
+        console.log('Received scores:', scores);
         leaderboardData = scores;
+        
+        // Update UI
+        const container = document.getElementById('leaderboardContainer');
+        if (container) {
+            let output = '<h3>Top Scores</h3><table class="leaderboard-table">';
+            output += '<tr><th>Rank</th><th>Player</th><th>Score</th></tr>';
+            scores.forEach((entry, index) => {
+                output += `<tr>
+                    <td>${index + 1}</td>
+                    <td>${entry.playerName}</td>
+                    <td>${entry.score}</td>
+                </tr>`;
+            });
+            output += '</table>';
+            container.innerHTML = output;
+            container.style.display = 'block';
+        }
+        
         return scores;
     } catch (err) {
         console.error('Leaderboard fetch error:', err);

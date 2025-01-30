@@ -4,9 +4,12 @@ import atexit
 import os
 import logging
 from flask_cors import CORS
+from crate import client
+import uuid
+from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -15,6 +18,12 @@ game_events = GameEvents()
 CORS(app)
 
 leaderboard_data = []
+
+# CrateDB connection
+connection = client.connect("localhost:4200")
+
+# Add new event type constant at top
+SCORE_EVENT = 'score'
 
 @app.route('/')
 def home():
@@ -37,30 +46,52 @@ def start_session():
         return jsonify({'error': 'Failed to start session'}), 500
 
 @app.route('/event', methods=['POST'])
-def track_event():
+def handle_event():
     try:
-        data = request.json
+        event_data = request.json
+        event_type = event_data.get('type')
+        
+        if event_type == SCORE_EVENT:
+            # Handle score event
+            player_name = event_data.get('playerName', 'Anonymous')
+            score = event_data.get('score', 0)
+            
+            cursor = connection.cursor()
+            score_id = str(uuid.uuid4())
+            
+            query = """
+                INSERT INTO leaderboard (id, player_name, score, created) 
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """
+            
+            cursor.execute(query, (score_id, player_name, score))
+            connection.commit()
+            
+            logger.info(f"Score saved: {player_name} - {score}")
+            return jsonify({'success': True, 'id': score_id})
+            
+        # ... handle other events ...
+        
         user_id = session.get('user_id')
         session_id = session.get('session_id')
         
         if not user_id or not session_id:
-            logger.warning(f"No active session for event: {data}")
+            logger.warning(f"No active session for event: {event_data}")
             return jsonify({'error': 'No active session'}), 400
             
-        if not data or 'type' not in data:
+        if not event_data or 'type' not in event_data:
             return jsonify({'error': 'Invalid event data'}), 400
 
-        event_type = data.get('type')
         game_events.track_event(
             event_type,
-            data.get('data', {}),
+            event_data.get('data', {}),
             user_id,
             session_id
         )
         
         # Suppose we store the game_over score:
         if event_type == 'game_over':
-            leaderboard_data.append({'player': data.get('player_id'), 'score': data.get('score')})
+            leaderboard_data.append({'player': event_data.get('player_id'), 'score': event_data.get('score')})
         
         return jsonify({'status': 'success'})
     except Exception as e:
@@ -94,21 +125,54 @@ def get_leaderboard():
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard_api():
     try:
-        # Add your CrateDB connection/query here
-        return jsonify({'scores': leaderboard_data})
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT player_name, score 
+            FROM leaderboard 
+            ORDER BY score DESC 
+            LIMIT 5
+        """)
+        rows = cursor.fetchall()
+        scores = [{'playerName': row[0], 'score': row[1]} for row in rows]
+        return jsonify({'scores': scores})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scores', methods=['POST']) 
+@app.route('/api/scores', methods=['POST'])
 def save_score():
     try:
         data = request.json
+        logger.debug(f"Received data: {data}")
         player_name = data.get('playerName')
         score = data.get('score')
-        # Add your CrateDB save logic here
-        return jsonify({'success': True})
+        
+        if not player_name or not isinstance(score, (int, float)):
+            return jsonify({'success': False, 'error': 'Invalid input'}), 400
+
+        logger.info(f"Saving score: {player_name} - {score}")
+        
+        cursor = connection.cursor()
+        score_id = str(uuid.uuid4())
+        
+        cursor.execute("""
+            INSERT INTO leaderboard (id, player_name, score, created) 
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, (score_id, player_name, score))
+        
+        connection.commit()
+        logger.info(f"Score saved with ID: {score_id}")
+        
+        return jsonify({
+            'success': True,
+            'id': score_id
+        })
+        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error saving score: {str(e)}")
+        return jsonify({
+            'success': False, 
+            'error': str(e)
+        }), 500
 
 def shutdown():
     try:

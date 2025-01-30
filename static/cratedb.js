@@ -7,7 +7,7 @@ const crateDBConfig = {
 
 class CrateDBHandler {
   constructor() {
-    this.baseUrl = `http://${crateDBConfig.host}:${crateDBConfig.port}/_sql`;
+    this.baseUrl = '/api'; // Update to use backend proxy
   }
 
   async getLeaderboard(limit = 10) {
@@ -23,18 +23,37 @@ class CrateDBHandler {
 
   async saveScore(playerName, score) {
     try {
-      await fetch('/api/scores', {
+    //   console.log('Attempting to save score:', { playerName, score });
+      
+      const response = await fetch('/api/scores', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          playerName,
-          score 
+          playerName: playerName,
+          score: parseInt(score)
         })
       });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save score');
+      }
+      
+      console.log('Score saved successfully:', data);
+      return {
+        success: true,
+        id: data.id
+      };
+      
     } catch (error) {
-      console.error('Error saving score:', error);
+      console.error('Save score failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }
