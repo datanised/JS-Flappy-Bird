@@ -1,0 +1,39 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #333;
+    overflow: hidden;
+}
+
+canvas {
+    border: 1px solid #000;
+    display: block;
+    margin: 0 auto;
+    background: #70c5ce;
+}
+
+@media (orientation: landscape) {
+    canvas {
+        width: auto;
+        height: 100vh;
+    }
+}
+
+@media (orientation: portrait) {
+    canvas {
+        width: 100vw;
+        height: auto;
+    }
+}
+
+
+
+
+#emailForm {
+    text-align: center;
+    margin: 20px auto;
+}

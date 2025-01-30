@@ -2,6 +2,8 @@ const RAD = Math.PI / 180;
 const scrn = document.getElementById("canvas");
 const sctx = scrn.getContext("2d");
 scrn.tabIndex = 1;
+
+
 scrn.addEventListener("click", () => {
   switch (state.curr) {
     case state.getReady:
@@ -44,6 +46,33 @@ scrn.onkeydown = function keyDown(e) {
     }
   }
 };
+
+// Define the game loop function
+function gameLoop() {
+  // Update game state
+  frames++;
+  gnd.update();
+  bird.update();
+  pipe.update();
+  ground.update();
+  background.update();
+  
+  // Clear canvas
+  sctx.fillStyle = "#70c5ce";
+  sctx.fillRect(0, 0, scrn.width, scrn.height);
+  
+  // Draw game objects
+  // bg.draw();
+  background.draw();
+  pipe.draw();
+  gnd.draw();
+  bird.draw();
+  UI.draw();
+  ground.draw();
+
+  
+  requestAnimationFrame(gameLoop);
+}
 
 let frames = 0;
 let dx = 2;
@@ -292,46 +321,88 @@ const UI = {
   },
 };
 
-gnd.sprite.src = "img/ground.png";
-bg.sprite.src = "img/BG.png";
-pipe.top.sprite.src = "img/toppipe.png";
-pipe.bot.sprite.src = "img/botpipe.png";
-UI.gameOver.sprite.src = "img/go.png";
-UI.getReady.sprite.src = "img/getready.png";
-UI.tap[0].sprite.src = "img/tap/t0.png";
-UI.tap[1].sprite.src = "img/tap/t1.png";
-bird.animations[0].sprite.src = "img/bird/b0.png";
-bird.animations[1].sprite.src = "img/bird/b1.png";
-bird.animations[2].sprite.src = "img/bird/b2.png";
-bird.animations[3].sprite.src = "img/bird/b0.png";
-SFX.start.src = "sfx/start.wav";
-SFX.flap.src = "sfx/flap.wav";
-SFX.score.src = "sfx/score.wav";
-SFX.hit.src = "sfx/hit.wav";
-SFX.die.src = "sfx/die.wav";
+bird.animations[0].sprite.src = "static/img/bird/b0.png";
+bird.animations[1].sprite.src = "static/img/bird/b1.png";
+bird.animations[2].sprite.src = "static/img/bird/b2.png";
+bird.animations[3].sprite.src = "static/img/bird/b0.png";
+SFX.start.src = "static/sfx/start.wav";
+SFX.flap.src = "static/sfx/flap.wav";
+SFX.score.src = "static/sfx/score.wav";
+SFX.hit.src = "static/sfx/hit.wav";
+SFX.die.src = "static/sfx/die.wav";
 
-function gameLoop() {
-  update();
-  draw();
-  frames++;
+// Load assets before game starts
+window.onload = function() {
+  scrn.style.display = 'none'; // Hide canvas until form submitted
+  
+  // Preload all game images
+  gnd.sprite.src = "static/img/ground.png";
+  bg.sprite.src = "static/img/BG.png";
+  pipe.top.sprite.src = "static/img/toppipe.png";
+  pipe.bot.sprite.src = "static/img/botpipe.png";
+  UI.getReady.sprite.src = "static/img/getready.png";
+  UI.gameOver.sprite.src = "static/img/go.png";
+  bird.animations[0].sprite.src = "static/img/bird/b0.png";
+  bird.animations[1].sprite.src = "static/img/bird/b1.png";
+  bird.animations[2].sprite.src = "static/img/bird/b2.png";
+}
+const background = {
+  x: 0,
+  y: 0,
+  width: 288,    // Width of single background image
+  speed: 0.5,    // Slower than ground for parallax
+  
+  update() {
+      this.x = (this.x - this.speed) % this.width;
+  },
+  
+  draw() {
+      // Calculate how many images needed to fill screen
+      let numImages = Math.ceil(scrn.width / this.width) + 1;
+      
+      // Draw repeated backgrounds
+      for(let i = 0; i < numImages; i++) {
+          sctx.drawImage(bg.sprite,
+                        this.x + (i * this.width), this.y,
+                        this.width, scrn.height);
+      }
+  }
 }
 
-function update() {
-  bird.update();
-  gnd.update();
-  pipe.update();
-  UI.update();
+const ground = {
+  x: 0,
+  y: scrn.height - 112,
+  width: 2400,
+  speed: 2,
+  
+  update() {
+      this.x = (this.x - this.speed) % (scrn.width/2);
+  },
+  
+  draw() {
+      // Use the ground sprite image directly instead of sprite sheet
+      sctx.drawImage(gnd.sprite, 
+                    this.x, this.y, this.width, 112);
+      // Draw second ground piece for seamless scrolling
+      sctx.drawImage(gnd.sprite,
+                    this.x + this.width/2, this.y, this.width, 112);
+  }
+};
+
+function startGame() {
+// Reset game state
+state.curr = state.getReady;
+bird.speed = 0;
+bird.y = 100;
+pipe.pipes = [];
+UI.score.curr = 0;
+SFX.played = false;
+
+// Ensure canvas is visible and sized
+scrn.style.display = 'block';
+scrn.focus();
+
+// Start game loop
+frames = 0;
+gameLoop();
 }
-
-function draw() {
-  sctx.fillStyle = "#30c0df";
-  sctx.fillRect(0, 0, scrn.width, scrn.height);
-  bg.draw();
-  pipe.draw();
-
-  bird.draw();
-  gnd.draw();
-  UI.draw();
-}
-
-setInterval(gameLoop, 20);
