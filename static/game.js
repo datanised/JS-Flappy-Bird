@@ -1,8 +1,51 @@
+import { crateDB } from './cratedb.js';
+
+// Move state definition before usage
+const state = {
+    curr: 0,
+    getReady: 0,
+    Play: 1,
+    gameOver: 2,
+    leaderboard: []
+};
+
+// Wait for DOM to load before adding listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const scrn = document.getElementById("canvas");
+    const sctx = scrn.getContext("2d");
+    scrn.tabIndex = 1;
+
+    // Move event listeners inside DOMContentLoaded
+    scrn.addEventListener("click", () => {
+        switch (state.curr) {
+            case state.getReady:
+                state.curr = state.Play;
+                SFX.start.play();
+                break;
+            case state.Play:
+                bird.flap();
+                break;
+            case state.gameOver:
+                state.curr = state.getReady;
+                bird.speed = 0;
+                bird.y = 100;
+                pipe.pipes = [];
+                UI.score.curr = 0;
+                SFX.played = false;
+                break;
+        }
+    });
+
+    // Start game loop after DOM loads
+    requestAnimationFrame(gameLoop);
+});
+
 const RAD = Math.PI / 180;
 const scrn = document.getElementById("canvas");
 const sctx = scrn.getContext("2d");
 scrn.tabIndex = 1;
 
+let gameOverTracked = false;
 
 scrn.addEventListener("click", () => {
   switch (state.curr) {
@@ -14,12 +57,14 @@ scrn.addEventListener("click", () => {
       bird.flap();
       break;
     case state.gameOver:
+      document.getElementById('leaderboardContainer').style.display = 'none';
       state.curr = state.getReady;
       bird.speed = 0;
       bird.y = 100;
       pipe.pipes = [];
       UI.score.curr = 0;
       SFX.played = false;
+      gameOverTracked = false;
       break;
   }
 });
@@ -69,19 +114,16 @@ function gameLoop() {
   bird.draw();
   UI.draw();
   ground.draw();
-
+  // Draw leaderboard if game over
+  if (state.curr === state.gameOver) {
+    leaderboard.draw();
+  }
   
   requestAnimationFrame(gameLoop);
 }
 
 let frames = 0;
 let dx = 2;
-const state = {
-  curr: 0,
-  getReady: 0,
-  Play: 1,
-  gameOver: 2,
-};
 const SFX = {
   start: new Audio(),
   flap: new Audio(),
@@ -89,6 +131,22 @@ const SFX = {
   hit: new Audio(),
   die: new Audio(),
   played: false,
+  
+  // Add init function to load audio files
+  init() {
+    this.start.src = "static/sfx/start.wav";
+    this.flap.src = "static/sfx/flap.wav"; 
+    this.score.src = "static/sfx/score.wav";
+    this.hit.src = "static/sfx/hit.wav";
+    this.die.src = "static/sfx/die.wav";
+    
+    // Pre-load audio files
+    Object.values(this).forEach(audio => {
+      if(audio instanceof Audio) {
+        audio.load();
+      }
+    });
+  }
 };
 const gnd = {
   sprite: new Image(),
@@ -311,6 +369,21 @@ const UI = {
           sctx.strokeText(sc, scrn.width / 2 - 85, scrn.height / 2 + 15);
         }
 
+        if (state.curr === state.gameOver && !SFX.played && !gameOverTracked) {
+          trackEvent('game_over', { score: this.score.curr });
+          fetch('/leaderboard')
+              .then(resp => resp.json())
+              .then(leaderboard => {
+                  let output = '<h3>Leaderboard</h3><ul>';
+                  leaderboard.forEach(entry => {
+                      output += `<li>${entry.player}: ${entry.score}</li>`;
+                  });
+                  output += '</ul>';
+                  document.getElementById('leaderboardContainer').innerHTML = output;
+                  gameOverTracked = true;
+              })
+              .catch(err => console.error('Leaderboard fetch error:', err));
+      }
         break;
     }
   },
@@ -325,11 +398,6 @@ bird.animations[0].sprite.src = "static/img/bird/b0.png";
 bird.animations[1].sprite.src = "static/img/bird/b1.png";
 bird.animations[2].sprite.src = "static/img/bird/b2.png";
 bird.animations[3].sprite.src = "static/img/bird/b0.png";
-SFX.start.src = "static/sfx/start.wav";
-SFX.flap.src = "static/sfx/flap.wav";
-SFX.score.src = "static/sfx/score.wav";
-SFX.hit.src = "static/sfx/hit.wav";
-SFX.die.src = "static/sfx/die.wav";
 
 // Load assets before game starts
 window.onload = function() {
@@ -345,6 +413,7 @@ window.onload = function() {
   bird.animations[0].sprite.src = "static/img/bird/b0.png";
   bird.animations[1].sprite.src = "static/img/bird/b1.png";
   bird.animations[2].sprite.src = "static/img/bird/b2.png";
+  SFX.init(); // Initialize SFX
 }
 const background = {
   x: 0,
@@ -391,81 +460,58 @@ const ground = {
 
 // Event tracking functions
 async function trackEvent(type, data) {
+  if (!activeSession) {
+    console.warn('No active session - initializing default session');
+    await initializeSession('anonymous');
+  }
+
   try {
-      const response = await fetch('/event', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-              type: type,
-              data: data
-          })
-      });
-      
-      if (!response.ok) {
-          console.error('Event tracking failed:', await response.text());
-      }
+    const response = await fetch('/event', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: type,
+        data: data,
+        session_id: activeSession
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Event tracking failed:', errorData);
+    }
   } catch (error) {
-      console.error('Event tracking error:', error);
+    console.error('Event tracking error:', error);
   }
 }
+
+let activeSession = null;
 
 async function initializeSession(email) {
   try {
-      const response = await fetch('/start-session', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-              user_id: email
-          })
-      });
+    const response = await fetch('/start-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: email })
+    });
 
-      if (!response.ok) {
-          throw new Error('Failed to initialize session');
-      }
+    if (!response.ok) {
+      throw new Error('Failed to initialize session');
+    }
 
-      const data = await response.json();
-      return data.session_id;
+    const data = await response.json();
+    activeSession = data.session_id;
+    return activeSession;
   } catch (error) {
-      console.error('Session initialization failed:', error);
-      return null;
+    console.error('Session initialization failed:', error);
+    return null;
   }
 }
 
-// Modify startGame function
-async function startGame() {
-  const email = document.getElementById('email').value;
-  
-  // Initialize session first
-  const sessionId = await initializeSession(email);
-  if (!sessionId) {
-      alert('Failed to start game session. Please try again.');
-      return;
-  }
-
-  // Reset game state
-  state.curr = state.getReady;
-  bird.speed = 0;
-  bird.y = 100;
-  pipe.pipes = [];
-  UI.score.curr = 0;
-  SFX.played = false;
-
-  // Track game start
-  await trackEvent('game_start', {
-      player_id: email,
-      session_id: sessionId
-  });
-
-  // Show canvas and start game
-  scrn.style.display = 'block';
-  scrn.focus();
-  frames = 0;
-  gameLoop();
-}
 
 // Modify bird.collisioned function to track collisions
 const originalCollisioned = bird.collisioned;
@@ -478,9 +524,8 @@ bird.collisioned = function() {
     }
     return collision;
 };
-let gameOverTracked = false;
 
-// Modify UI.drawScore to track score updates
+// Modify UI.drawScore to show leaderboard container when displaying it
 const originalDrawScore = UI.drawScore;
 UI.drawScore = function() {
     const oldScore = this.score.curr;
@@ -491,9 +536,166 @@ UI.drawScore = function() {
         });
     }
     if (state.curr === state.gameOver && !SFX.played && !gameOverTracked) {
-      trackEvent('game_over', {
-        score: this.score.curr
-      });
-      gameOverTracked = true;
+        trackEvent('game_over', {
+            score: this.score.curr
+        });
+        fetch('/leaderboard')
+            .then(resp => resp.json())
+            .then(leaderboard => {
+                let output = '<h3>Leaderboard</h3><ul>';
+                leaderboard.forEach(entry => {
+                    output += `<li>${entry.player}: ${entry.score}</li>`;
+                });
+                output += '</ul>';
+                const leaderboardContainer = document.getElementById('leaderboardContainer');
+                leaderboardContainer.innerHTML = output;
+                leaderboardContainer.style.display = 'block'; // Show leaderboard
+                gameOverTracked = true;
+            })
+            .catch(err => console.error('Leaderboard fetch error:', err));
     }
 };
+
+const leaderboard = {
+    draw: async function() {
+        if (state.curr !== state.gameOver) return;
+        
+        const scores = await crateDB.getLeaderboard(5);
+        state.leaderboard = scores;
+        
+        // Render leaderboard
+        sctx.fillStyle = "#FFF";
+        sctx.strokeStyle = "#000";
+        sctx.lineWidth = 2;
+        sctx.font = "25px Squada One";
+        
+        sctx.fillText("LEADERBOARD", scrn.width/2 - 80, 200);
+        sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, 200);
+        
+        scores.forEach((score, index) => {
+            const text = `${index + 1}. ${score.playerName}: ${score.score}`;
+            sctx.fillText(text, scrn.width/2 - 80, 240 + (index * 30));
+            sctx.strokeText(text, scrn.width/2 - 80, 240 + (index * 30));
+        });
+    }
+};
+
+// Update game over handling
+async function gameOver() {
+    state.curr = state.gameOver;
+    SFX.die.play();
+    
+    if (bird.score.curr > 0) {
+        await crateDB.saveScore('Player', bird.score.curr);
+    }
+}
+
+let leaderboardData = null;
+
+// Single fetch function
+async function fetchLeaderboard() {
+    if (leaderboardData) return leaderboardData;
+    try {
+        const scores = await crateDB.getLeaderboard(5);
+        leaderboardData = scores;
+        return scores;
+    } catch (err) {
+        console.error('Leaderboard fetch error:', err);
+        return [];
+    }
+}
+
+// Modified UI.drawScore
+UI.drawScore = function() {
+    const oldScore = this.score.curr;
+    originalDrawScore.call(this);
+    
+    if (state.curr === state.gameOver && !gameOverTracked) {
+        gameOverTracked = true;
+        fetchLeaderboard().then(scores => {
+            const container = document.getElementById('leaderboardContainer');
+            let output = '<h3>Leaderboard</h3><ul>';
+            scores.forEach(entry => {
+                output += `<li>${entry.player}: ${entry.score}</li>`;
+            });
+            output += '</ul>';
+            container.innerHTML = output;
+            container.style.display = 'block';
+        });
+    }
+};
+
+// Modified leaderboard.draw
+leaderboard.draw = function() {
+    if (state.curr !== state.gameOver || !leaderboardData) return;
+    
+    // Just render the cached data
+    sctx.fillStyle = "#FFF";
+    sctx.strokeStyle = "#000";
+    sctx.lineWidth = 2;
+    sctx.font = "25px Squada One";
+    
+    sctx.fillText("LEADERBOARD", scrn.width/2 - 80, 200);
+    sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, 200);
+    
+    leaderboardData.forEach((score, index) => {
+        const text = `${index + 1}. ${score.playerName}: ${score.score}`;
+        sctx.fillText(text, scrn.width/2 - 80, 240 + (index * 30));
+    });
+};
+
+// Game initialization function
+async function startGame() {
+  const email = document.getElementById('email').value || 'anonymous';
+  
+  // Initialize session first
+  activeSession = await initializeSession(email);
+  if (!activeSession) {
+    console.error('Failed to initialize session');
+    return;
+  }
+  
+  // Hide form and leaderboard
+  document.getElementById('emailForm').style.display = 'none';
+  document.getElementById('leaderboardContainer').style.display = 'none';
+  
+  // Initialize audio
+  SFX.init();
+  
+  // Initialize game state
+  state.curr = state.getReady;
+  bird.speed = 0;
+  bird.y = 100;
+  pipe.pipes = [];
+  UI.score.curr = 0;
+  SFX.played = false;
+
+  // Show canvas and start game
+  const scrn = document.getElementById('canvas');
+  scrn.style.display = 'block';
+  scrn.focus();
+  frames = 0;
+  gameLoop();
+}
+
+// Wait for DOM content to load
+document.addEventListener('DOMContentLoaded', () => {
+  // Set up form submission handler
+  const emailForm = document.getElementById('emailForm');
+  if (emailForm) {
+      emailForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          await startGame();
+      });
+  }
+
+  // Initialize game canvas - no need for additional click handler
+  const scrn = document.getElementById('canvas');
+  if (scrn) {
+      scrn.tabIndex = 1;
+      scrn.focus();
+  }
+});
+
+// Export game functions
+export { gameLoop, gameOver, startGame };
