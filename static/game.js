@@ -328,39 +328,42 @@ const UI = {
         sctx.drawImage(this.tap[this.frame].sprite, this.tx, this.ty);
         break;
       case state.gameOver:
-        this.y = parseFloat(scrn.height - this.gameOver.sprite.height) / 2;
+        this.y = 100; // Move the gameOver image to the top of the screen
         this.x = parseFloat(scrn.width - this.gameOver.sprite.width) / 2;
         this.tx = parseFloat(scrn.width - this.tap[0].sprite.width) / 2;
         this.ty =
           this.y + this.gameOver.sprite.height - this.tap[0].sprite.height;
         sctx.drawImage(this.gameOver.sprite, this.x, this.y);
         sctx.drawImage(this.tap[this.frame].sprite, this.tx, this.ty);
+        
+        // Draw score text right below the "GAME OVER" image
+        sctx.fillStyle = "#FFF";
+        sctx.strokeStyle = "#000";
+        sctx.lineWidth = 2;
+        sctx.font = "35px Squada One";
+        sctx.fillText(`Score: ${this.score.curr}`, scrn.width/2 - 80, this.y + this.gameOver.sprite.height -70 );
+        sctx.strokeText(`Score: ${this.score.curr}`, scrn.width/2 - 80, this.y + this.gameOver.sprite.height - 70 );
         break;
+
     }
     this.drawScore();
   },
   drawScore: function () {
-    sctx.fillStyle = "#FFFFFF";
-    sctx.strokeStyle = "#000000";
-    switch (state.curr) {
-      case state.Play:
-        sctx.lineWidth = "2";
+    // Draw leaderboard at the bottom
+    if (state.curr === state.gameOver && leaderboardData) {
+        sctx.fillStyle = "#FFF";
+        sctx.strokeStyle = "#000";
+        sctx.lineWidth = 2;
         sctx.font = "35px Squada One";
-        sctx.fillText(this.score.curr, scrn.width / 2 - 5, 50);
-        sctx.strokeText(this.score.curr, scrn.width / 2 - 5, 50);
-        break;
-      case state.gameOver:
-        if (!gameOverTracked) {
-            gameOverTracked = true;
-            fetchLeaderboard(); // Refresh leaderboard when game ends
-        }
-        // Draw current score
-        sctx.lineWidth = "2";
-        sctx.font = "40px Squada One";
-        let sc = `SCORE :     ${this.score.curr}`;
-        sctx.fillText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
-        sctx.strokeText(sc, scrn.width / 2 - 80, scrn.height / 2 + 0);
-        break;
+        
+        // sctx.fillText("LEADERBOARD", scrn.width/2 - 80, scrn.height / 2);
+        // sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, scrn.height / 2);
+        
+        // leaderboardData.forEach((score, index) => {
+        //     const text = `${index + 1}. ${score.playerName}: ${score.score}`;
+        //     sctx.fillText(text, scrn.width/2 - 80, scrn.height / 2 + 40 + (index * 30));
+        //     sctx.strokeText(text, scrn.width/2 - 80, scrn.height / 2 + 40 + (index * 30));
+        // });
     }
   },
   update: function () {
@@ -544,29 +547,40 @@ UI.drawScore = function() {
             .catch(err => console.error('Leaderboard fetch error:', err));
     }
 };
-
 const leaderboard = {
-    draw: async function() {
-        if (state.curr !== state.gameOver) return;
-        
-        const scores = await crateDB.getLeaderboard(5);
-        state.leaderboard = scores;
-        
-        // Render leaderboard
-        sctx.fillStyle = "#FFF";
-        sctx.strokeStyle = "#000";
-        sctx.lineWidth = 2;
-        sctx.font = "25px Squada One";
-        
-        sctx.fillText("LEADERBOARD", scrn.width/2 - 80, 200);
-        sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, 200);
-        
-        scores.forEach((score, index) => {
-            const text = `${index + 1}. ${score.playerName}: ${score.score}`;
-            sctx.fillText(text, scrn.width/2 - 80, 240 + (index * 30));
-            sctx.strokeText(text, scrn.width/2 - 80, 240 + (index * 30));
-        });
-    }
+  draw: async function() {
+      if (state.curr !== state.gameOver) return;
+      
+      const scores = await crateDB.getLeaderboard(5);
+      state.leaderboard = scores;
+
+      // Spacing & positioning adjustments
+      const entrySpacing = 30;  // Space between leaderboard entries
+      const titleHeight = 40;   // Estimated height for "LEADERBOARD" title
+      const totalEntries = scores.length;
+      const leaderboardHeight = titleHeight + (totalEntries * entrySpacing);
+
+      // Move the leaderboard higher by adjusting centerY
+      const centerY = (scrn.height / 2) - (leaderboardHeight / 1.5); // Move it up
+
+      // Render leaderboard
+      sctx.fillStyle = "#FFF";
+      sctx.strokeStyle = "#000";
+      sctx.lineWidth = 2;
+      sctx.font = "35px Squada One";
+      
+      // Position the leaderboard title
+      sctx.fillText("LEADERBOARD", scrn.width / 2 - 80, centerY);
+      sctx.strokeText("LEADERBOARD", scrn.width / 2 - 80, centerY);
+      
+      // Position each leaderboard entry dynamically
+      scores.forEach((score, index) => {
+          const yPosition = centerY + titleHeight + (index * entrySpacing);
+          const text = `${index + 1}. ${score.playerName}: ${score.score}`;
+          sctx.fillText(text, scrn.width / 2 - 80, yPosition);
+          sctx.strokeText(text, scrn.width / 2 - 80, yPosition);
+      });
+  }
 };
 
 async function gameOver() {
@@ -617,21 +631,21 @@ async function fetchLeaderboard() {
         leaderboardData = scores;
         
         // Update UI
-        const container = document.getElementById('leaderboardContainer');
-        if (container) {
-            let output = '<h3>Top Scores</h3><table class="leaderboard-table">';
-            output += '<tr><th>Rank</th><th>Player</th><th>Score</th></tr>';
-            scores.forEach((entry, index) => {
-                output += `<tr>
-                    <td>${index + 1}</td>
-                    <td>${entry.playerName}</td>
-                    <td>${entry.score}</td>
-                </tr>`;
-            });
-            output += '</table>';
-            container.innerHTML = output;
-            container.style.display = 'block';
-        }
+        // const container = document.getElementById('leaderboardContainer');
+        // if (container) {
+        //     let output = '<h3>Top Scores</h3><table class="leaderboard-table">';
+        //     output += '<tr><th>Rank</th><th>Player</th><th>Score</th></tr>';
+        //     scores.forEach((entry, index) => {
+        //         output += `<tr>
+        //             <td>${index + 1}</td>
+        //             <td>${entry.playerName}</td>
+        //             <td>${entry.score}</td>
+        //         </tr>`;
+        //     });
+        //     output += '</table>';
+        //     container.innerHTML = output;
+        //     container.style.display = 'block';
+        // }
         
         return scores;
     } catch (err) {
@@ -668,14 +682,21 @@ leaderboard.draw = function() {
     sctx.fillStyle = "#FFF";
     sctx.strokeStyle = "#000";
     sctx.lineWidth = 2;
-    sctx.font = "25px Squada One";
+    sctx.font = "35px Squada One";
     
-    sctx.fillText("LEADERBOARD", scrn.width/2 - 80, 200);
-    sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, 200);
+    
+    // // Draw score text right below the "GAME OVER" image
+    // sctx.fillText(`Score: ${UI.score.curr}`, scrn.width/2 - 80, 160);
+    // sctx.strokeText(`Score: ${UI.score.curr}`, scrn.width/2 - 80, 160);
+    
+    // Draw leaderboard at the bottom
+    sctx.fillText("LEADERBOARD", scrn.width/2 - 80, scrn.height - 200);
+    sctx.strokeText("LEADERBOARD", scrn.width/2 - 80, scrn.height - 200);
     
     leaderboardData.forEach((score, index) => {
         const text = `${index + 1}. ${score.playerName}: ${score.score}`;
-        sctx.fillText(text, scrn.width/2 - 80, 240 + (index * 30));
+        sctx.fillText(text, scrn.width/2 - 80, scrn.height - 160 + (index * 30));
+        sctx.strokeText(text, scrn.width/2 - 80, scrn.height - 160 + (index * 30));
     });
 };
 
@@ -692,7 +713,7 @@ async function startGame() {
   
   // Hide form and leaderboard
   document.getElementById('emailForm').style.display = 'none';
-  document.getElementById('leaderboardContainer').style.display = 'none';
+  // document.getElementById('leaderboardContainer').style.display = 'none';
   
   // Initialize audio
   SFX.init();
