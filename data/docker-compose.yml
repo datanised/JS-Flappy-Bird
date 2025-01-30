@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  redpanda:
+    image: docker.vectorized.io/vectorized/redpanda:v22.2.7
+    container_name: redpanda
+    ports:
+      - "9092:9092" # Kafka API
+      - "9644:9644" # Metrics endpoint
+    environment:
+      - REDPANDA_ENABLE_USAGE_STATS=false
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr pandaproxy:8082
+      - --rpc-addr 0.0.0.0:33145
+      - --advertise-rpc-addr redpanda:33145
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+
+  cratedb:
+    image: crate:latest
+    container_name: cratedb
+    ports:
+      - "4200:4200" # CrateDB HTTP endpoint
+      - "5432:5432" # PostgreSQL compatibility endpoint
+    environment:
+      - CRATE_HEAP_SIZE=2g
+    volumes:
+      - cratedb-data:/data
+
+volumes:
+  grafana-storage:
+  cratedb-data: 
+

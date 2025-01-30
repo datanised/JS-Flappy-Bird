@@ -389,20 +389,111 @@ const ground = {
   }
 };
 
-function startGame() {
-// Reset game state
-state.curr = state.getReady;
-bird.speed = 0;
-bird.y = 100;
-pipe.pipes = [];
-UI.score.curr = 0;
-SFX.played = false;
-
-// Ensure canvas is visible and sized
-scrn.style.display = 'block';
-scrn.focus();
-
-// Start game loop
-frames = 0;
-gameLoop();
+// Event tracking functions
+async function trackEvent(type, data) {
+  try {
+      const response = await fetch('/event', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+              type: type,
+              data: data
+          })
+      });
+      
+      if (!response.ok) {
+          console.error('Event tracking failed:', await response.text());
+      }
+  } catch (error) {
+      console.error('Event tracking error:', error);
+  }
 }
+
+async function initializeSession(email) {
+  try {
+      const response = await fetch('/start-session', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+              user_id: email
+          })
+      });
+
+      if (!response.ok) {
+          throw new Error('Failed to initialize session');
+      }
+
+      const data = await response.json();
+      return data.session_id;
+  } catch (error) {
+      console.error('Session initialization failed:', error);
+      return null;
+  }
+}
+
+// Modify startGame function
+async function startGame() {
+  const email = document.getElementById('email').value;
+  
+  // Initialize session first
+  const sessionId = await initializeSession(email);
+  if (!sessionId) {
+      alert('Failed to start game session. Please try again.');
+      return;
+  }
+
+  // Reset game state
+  state.curr = state.getReady;
+  bird.speed = 0;
+  bird.y = 100;
+  pipe.pipes = [];
+  UI.score.curr = 0;
+  SFX.played = false;
+
+  // Track game start
+  await trackEvent('game_start', {
+      player_id: email,
+      session_id: sessionId
+  });
+
+  // Show canvas and start game
+  scrn.style.display = 'block';
+  scrn.focus();
+  frames = 0;
+  gameLoop();
+}
+
+// Modify bird.collisioned function to track collisions
+const originalCollisioned = bird.collisioned;
+bird.collisioned = function() {
+    const collision = originalCollisioned.call(this);
+    if (collision) {
+        trackEvent('collision', {
+            type: 'pipe'
+        });
+    }
+    return collision;
+};
+let gameOverTracked = false;
+
+// Modify UI.drawScore to track score updates
+const originalDrawScore = UI.drawScore;
+UI.drawScore = function() {
+    const oldScore = this.score.curr;
+    originalDrawScore.call(this);
+    if (state.curr === state.Play && this.score.curr !== oldScore) {
+        trackEvent('score_update', {
+            score: this.score.curr
+        });
+    }
+    if (state.curr === state.gameOver && !SFX.played && !gameOverTracked) {
+      trackEvent('game_over', {
+        score: this.score.curr
+      });
+      gameOverTracked = true;
+    }
+};
