@@ -11,7 +11,7 @@ const state = {
 
 // Wait for DOM to load before adding listeners
 document.addEventListener('DOMContentLoaded', () => {
-    const scrn = document.getElementById("canvas");
+    // const scrn = document.getElementById("canvas");
     const sctx = scrn.getContext("2d");
     scrn.tabIndex = 1;
 
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Start game loop after DOM loads
-    requestAnimationFrame(gameLoop);
+    // requestAnimationFrame(gameLoop);
 });
 
 const RAD = Math.PI / 180;
@@ -57,7 +57,7 @@ scrn.addEventListener("click", () => {
       bird.flap();
       break;
     case state.gameOver:
-      document.getElementById('leaderboardContainer').style.display = 'none';
+      // document.getElementById('leaderboardContainer').style.display = 'none';
       state.curr = state.getReady;
       bird.speed = 0;
       bird.y = 100;
@@ -380,19 +380,20 @@ bird.animations[3].sprite.src = "static/img/bird/b0.png";
 
 // Load assets before game starts
 window.onload = function() {
-  scrn.style.display = 'none'; // Hide canvas until form submitted
+  scrn.style.display = 'block';
+  drawForm() // Hide canvas until form submitted
   
-  // Preload all game images
-  gnd.sprite.src = "static/img/ground.png";
-  bg.sprite.src = "static/img/BG.png";
-  pipe.top.sprite.src = "static/img/toppipe.png";
-  pipe.bot.sprite.src = "static/img/botpipe.png";
-  UI.getReady.sprite.src = "static/img/getready.png";
-  UI.gameOver.sprite.src = "static/img/go.png";
-  bird.animations[0].sprite.src = "static/img/bird/b0.png";
-  bird.animations[1].sprite.src = "static/img/bird/b1.png";
-  bird.animations[2].sprite.src = "static/img/bird/b2.png";
-  SFX.init(); // Initialize SFX
+  // // Preload all game images
+  // gnd.sprite.src = "static/img/ground.png";
+  // bg.sprite.src = "static/img/BG.png";
+  // pipe.top.sprite.src = "static/img/toppipe.png";
+  // pipe.bot.sprite.src = "static/img/botpipe.png";
+  // UI.getReady.sprite.src = "static/img/getready.png";
+  // UI.gameOver.sprite.src = "static/img/go.png";
+  // bird.animations[0].sprite.src = "static/img/bird/b0.png";
+  // bird.animations[1].sprite.src = "static/img/bird/b1.png";
+  // bird.animations[2].sprite.src = "static/img/bird/b2.png";
+  // SFX.init(); // Initialize SFX
 }
 const background = {
   x: 0,
@@ -668,8 +669,8 @@ UI.drawScore = function() {
                 output += `<li>${entry.player}: ${entry.score}</li>`;
             });
             output += '</ul>';
-            container.innerHTML = output;
-            container.style.display = 'block';
+            // container.innerHTML = output;
+            // container.style.display = 'block';
         });
     }
 };
@@ -699,25 +700,78 @@ leaderboard.draw = function() {
         sctx.strokeText(text, scrn.width/2 - 80, scrn.height - 160 + (index * 30));
     });
 };
+function drawForm() {
+  // Canvas positioning
+  const rect = scrn.getBoundingClientRect();
+
+  // Position input & button relative to canvas
+  let emailInput = document.getElementById("emailInput");
+  let emailSubmit = document.getElementById("emailSubmit");
+
+  emailInput.style.left = `${rect.left + scrn.width / 2 - 100}px`;
+  emailInput.style.top = `${rect.top + scrn.height / 2}px`;
+
+  emailSubmit.style.left = `${rect.left + scrn.width / 2 - 50}px`;
+  emailSubmit.style.top = `${rect.top + scrn.height / 2 + 50}px`;
+
+  // Show input
+  emailInput.classList.remove("hidden");
+  emailSubmit.classList.remove("hidden");
+
+  // Draw form text on canvas
+  sctx.fillStyle = "#FFF";
+  sctx.strokeStyle = "#000";
+  sctx.lineWidth = 2;
+  sctx.font = "20px Squada One";
+  
+  // sctx.fillText("Enter your email:", scrn.width / 2 - 100, scrn.height / 2 - 20);
+  // sctx.strokeText("Enter your email:", scrn.width / 2 - 100, scrn.height / 2 - 20);
+}
+
+function handleFormClick(event) {
+  const rect = scrn.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+
+  // Only detect clicks on the submit button
+  if (x >= scrn.width / 2 - 50 && x <= scrn.width / 2 + 50 &&
+      y >= scrn.height / 2 + 50 && y <= scrn.height / 2 + 80) {
+
+      let email = prompt("Enter your email:");
+      if (email) {
+          scrn.removeEventListener("click", handleFormClick); // ✅ Remove form event
+          scrn.removeEventListener("click", startGame); // ✅ Prevent accidental game start
+          startGame(email);
+      }
+  }
+}
 
 // Game initialization function
-async function startGame() {
-  const email = document.getElementById('email').value || 'anonymous';
-  
-  // Initialize session first
+async function startGame(email) {
+  email = email || 'anonymous';
+
+  // Initialize session
   activeSession = await initializeSession(email);
   if (!activeSession) {
-    console.error('Failed to initialize session');
-    return;
+      console.error('Failed to initialize session');
+      return;
   }
-  
-  // Hide form and leaderboard
-  document.getElementById('emailForm').style.display = 'none';
-  // document.getElementById('leaderboardContainer').style.display = 'none';
-  
+
+  // Clear the form before starting the game
+  sctx.clearRect(0, 0, scrn.width, scrn.height); // ✅ Clears the form
+
+  gnd.sprite.src = "static/img/ground.png";
+  bg.sprite.src = "static/img/BG.png";
+  pipe.top.sprite.src = "static/img/toppipe.png";
+  pipe.bot.sprite.src = "static/img/botpipe.png";
+  UI.getReady.sprite.src = "static/img/getready.png";
+  UI.gameOver.sprite.src = "static/img/go.png";
+  bird.animations[0].sprite.src = "static/img/bird/b0.png";
+  bird.animations[1].sprite.src = "static/img/bird/b1.png";
+  bird.animations[2].sprite.src = "static/img/bird/b2.png";
   // Initialize audio
   SFX.init();
-  
+
   // Initialize game state
   state.curr = state.getReady;
   bird.speed = 0;
@@ -726,31 +780,63 @@ async function startGame() {
   UI.score.curr = 0;
   SFX.played = false;
 
-  // Show canvas and start game
-  const scrn = document.getElementById('canvas');
+  // Enable game controls AFTER the game starts
+  scrn.addEventListener("click", gameClickHandler);
+
+  // Start game loop **ONLY NOW**
   scrn.style.display = 'block';
   scrn.focus();
   frames = 0;
-  gameLoop();
+  requestAnimationFrame(gameLoop);
+}
+
+// New function for handling game clicks
+function gameClickHandler() {
+  switch (state.curr) {
+      case state.getReady:
+          state.curr = state.Play;
+          SFX.start.play();
+          break;
+      case state.Play:
+          bird.flap();
+          break;
+      case state.gameOver:
+          state.curr = state.getReady;
+          bird.speed = 0;
+          bird.y = 100;
+          pipe.pipes = [];
+          UI.score.curr = 0;
+          SFX.played = false;
+          gameOverTracked = false;
+          break;
+  }
 }
 
 // Wait for DOM content to load
 document.addEventListener('DOMContentLoaded', () => {
-  // Set up form submission handler
-  const emailForm = document.getElementById('emailForm');
-  if (emailForm) {
-      emailForm.addEventListener('submit', async (event) => {
-          event.preventDefault();
-          await startGame();
-      });
-  }
+  scrn.addEventListener('click', handleFormClick);
 
-  // Initialize game canvas - no need for additional click handler
-  const scrn = document.getElementById('canvas');
-  if (scrn) {
-      scrn.tabIndex = 1;
-      scrn.focus();
-  }
+  // Initialize game canvas
+  scrn.tabIndex = 1;
+  scrn.focus();
+
+  // Draw the form on the canvas
+  drawForm();
+
+  // ✅ Add event listener for the email submit button
+  document.getElementById("emailSubmit").addEventListener("click", function() {
+      let emailInput = document.getElementById("emailInput").value;
+
+      if (emailInput) {
+          document.getElementById("emailInput").classList.add("hidden"); // Hide input
+          document.getElementById("emailSubmit").classList.add("hidden"); // Hide button
+
+          scrn.style.display = "block"; // Show game canvas
+          startGame(emailInput);
+      } else {
+          alert("Please enter a valid email.");
+      }
+  });
 });
 
 // Export game functions
